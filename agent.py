@@ -18,6 +18,8 @@ Usage (once implemented):
     print(result["error"])   # None on success
 """
 
+import re
+
 from tools import search_listings, suggest_outfit, create_fit_card
 
 
@@ -43,6 +45,75 @@ def _new_session(query: str, wardrobe: dict) -> dict:
         "fit_card": None,            # string returned by create_fit_card
         "error": None,               # set if the interaction ended early
     }
+
+
+# ── query parsing ─────────────────────────────────────────────────────────────
+
+# "under $30", "below 30", "$30", "< 30", "less than 30" → 30.0
+_PRICE_RE = re.compile(
+    r"(?:under|below|less than|cheaper than|<|max(?:imum)?)\s*\$?\s*(\d+(?:\.\d+)?)"
+    r"|\$\s*(\d+(?:\.\d+)?)",
+    re.IGNORECASE,
+)
+
+# "size M", "in M", or a standalone size token. Capture group holds the size.
+_SIZE_RE = re.compile(
+    r"(?:\b(?:size|sz)\s+|\bin\s+)"
+    r"(xxs|xs|s|m|l|xl|xxl|xxxl|w\d{2}|\d{1,2}(?:\.\d)?)\b"
+    r"|\b(xxs|xs|xl|xxl|xxxl|w\d{2})\b",
+    re.IGNORECASE,
+)
+
+
+def parse_query(query: str) -> dict:
+    """
+    Extract search parameters from a raw natural-language query.
+
+    Pulls an optional ``max_price`` and ``size`` out of the text using regex,
+    then treats whatever phrasing remains as the keyword ``description`` passed
+    to ``search_listings``.
+
+    Args:
+        query: The raw user query, e.g. "vintage graphic tee under $30, size M".
+
+    Returns:
+        A dict ``{"description": str, "size": str | None, "max_price": float | None}``.
+        ``description`` always falls back to the original query if stripping the
+        price/size phrases would leave it empty — we never search on "".
+    """
+    text = query or ""
+    spans: list[tuple[int, int]] = []
+
+    # max_price — first price-like match wins.
+    max_price: float | None = None
+    price_match = _PRICE_RE.search(text)
+    if price_match:
+        raw = price_match.group(1) or price_match.group(2)
+        if raw is not None:
+            max_price = float(raw)
+            spans.append(price_match.span())
+
+    # size — first size-like match wins.
+    size: str | None = None
+    size_match = _SIZE_RE.search(text)
+    if size_match:
+        raw_size = size_match.group(1) or size_match.group(2)
+        if raw_size:
+            size = raw_size.upper()
+            spans.append(size_match.span())
+
+    # description — original text with the matched phrases removed.
+    description = text
+    for start, end in sorted(spans, reverse=True):
+        description = description[:start] + " " + description[end:]
+    # Tidy leftover punctuation/whitespace from the removed phrases.
+    description = re.sub(r"[,\s]+", " ", description).strip(" ,.-")
+
+    # Never search on an empty string — fall back to the raw query.
+    if not description:
+        description = text.strip()
+
+    return {"description": description, "size": size, "max_price": max_price}
 
 
 # ── planning loop ─────────────────────────────────────────────────────────────
@@ -92,9 +163,45 @@ def run_agent(query: str, wardrobe: dict) -> dict:
     Before writing code, complete the Planning Loop and State Management sections
     of planning.md — your implementation should match what you described there.
     """
-    # TODO: implement the planning loop
+    # Step 1 — initialize the single source of truth for this run.
     session = _new_session(query, wardrobe)
-    session["error"] = "Planning loop not yet implemented."
+
+    # Step 2 — parse the query into search parameters.
+    session["parsed"] = parse_query(query)
+    description = session["parsed"]["description"]
+    size = session["parsed"]["size"]
+    max_price = session["parsed"]["max_price"]
+
+    # Step 3 — search, then BRANCH on the result. This is the one early exit.
+    session["search_results"] = search_listings(description, size, max_price)
+    if not session["search_results"]:
+        filters = [f"'{description}'"]
+        if max_price is not None:
+            filters.append(f"under ${max_price:g}")
+        if size:
+            filters.append(f"in size {size}")
+        session["error"] = (
+            f"No secondhand listings matched {' '.join(filters)}. "
+            "Try removing the size filter, raising your price ceiling, or "
+            "using broader keywords."
+        )
+        # Do NOT call suggest_outfit or create_fit_card on empty results.
+        return session
+
+    # Step 4 — select the top-ranked match to carry forward.
+    session["selected_item"] = session["search_results"][0]
+
+    # Step 5 — suggest an outfit from the selected item + wardrobe.
+    session["outfit_suggestion"] = suggest_outfit(
+        session["selected_item"], session["wardrobe"]
+    )
+
+    # Step 6 — turn the outfit + item into a shareable fit card.
+    session["fit_card"] = create_fit_card(
+        session["outfit_suggestion"], session["selected_item"]
+    )
+
+    # Step 7 — return the completed session.
     return session
 
 
