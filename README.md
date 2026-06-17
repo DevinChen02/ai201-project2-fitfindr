@@ -2,6 +2,16 @@
 
 A Gradio app that searches secondhand clothing listings, suggests outfits from your wardrobe, and generates a shareable fit card — all from a single natural language query.
 
+## Video Demo
+<div>
+    <a href="https://www.loom.com/share/d4495b10c35445deb465c42013f93149">
+      <p>AI201 Project 2 - FitFinder - Watch Video</p>
+    </a>
+    <a href="https://www.loom.com/share/d4495b10c35445deb465c42013f93149">
+      <img width="300" src="https://cdn.loom.com/sessions/thumbnails/d4495b10c35445deb465c42013f93149-6a22a3ccc5f62ff9-full-play.gif#t=0.1">
+    </a>
+</div>
+
 ## Setup
 
 **macOS / Linux:**
