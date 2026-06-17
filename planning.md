@@ -135,18 +135,20 @@ For each tool, describe the specific failure mode you're handling and what the a
 
 ## A Complete Interaction (Step by Step)
 
-Write out what a full user interaction looks like from start to finish — tool call by tool call. Use a specific example query.
-
 **Example user query:** "I'm looking for a vintage graphic tee under $30. I mostly wear baggy jeans and chunky sneakers. What's out there and how would I style it?"
 
 **Step 1:**
 <!-- What does the agent do first? Which tool is called? With what input? -->
+The agent parses the query and calls `search_listings("vintage graphic tee", max_price=30.0)`, filtering the listings by the description, style tags, and price ceiling. It gets back the matching graphic tees and picks the top result: "Graphic Tee — 2003 Tour Bootleg Style" ($24, Depop, good condition).
 
 **Step 2:**
 <!-- What happens next? What was returned from step 1? What tool is called now? -->
+Using that top listing as `new_item` and the user's wardrobe as `wardrobe`, the agent calls `suggest_outfit(new_item, wardrobe)`. It returns a styling suggestion that pairs the tee with the baggy straight-leg jeans and chunky white sneakers the user already owns.
 
 **Step 3:**
 <!-- Continue until the full interaction is complete -->
+The agent passes that styling text and the listing into `create_fit_card(outfit, new_item)`, which generates a short, casual social-media caption for the look. If `search_listings` had returned nothing, the agent would instead stop here and tell the user how to adjust their search.
 
 **Final output to user:**
 <!-- What does the user actually see at the end? -->
+The user sees the matched listing (title, price, platform, condition), the outfit suggestion built from their own wardrobe, and the ready-to-post fit card caption — all in one response.
